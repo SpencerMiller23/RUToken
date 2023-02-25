@@ -19,6 +19,10 @@ contract RUToken is IERC20, IERC20Metadata {
      */
     uint public tokenPrice;
 
+    uint private totalSupply = 0;
+
+    mapping(address => uint256) private accountBalances;
+    mapping(address => mapping(address, uint256)) private accountAllowances;
 
     constructor(uint _tokenPrice, uint _maxTokens) {
         tokenPrice = _tokenPrice;
@@ -45,14 +49,14 @@ contract RUToken is IERC20, IERC20Metadata {
      * @dev Returns the amount of tokens in existence.
      */
     function totalSupply() external view returns (uint256) {
-        // TODO: Implement
+        return totalSupply;
     }
 
     /**
      * @dev Returns the amount of tokens owned by `account`.
      */
     function balanceOf(address account) public view override returns (uint256) {
-        // TODO: Implement
+        return accountBalances[account];
     }
 
 
@@ -64,7 +68,13 @@ contract RUToken is IERC20, IERC20Metadata {
      * Emits a {Transfer} event.
      */
     function transfer(address recipient, uint256 amount) external override returns (bool) {
-        // TODO: Implement
+        address caller = msg.sender;
+        bool succeeded = transferHelper(caller, recipient, amount);
+
+        if (succeeded) {
+            emit Transfer(from, to, amount);
+        }
+        return succeeded;
     }
 
     /**
@@ -75,7 +85,7 @@ contract RUToken is IERC20, IERC20Metadata {
      * This value changes when {approve} or {transferFrom} are called.
      */
     function allowance(address owner, address spender) external view override returns (uint256) {
-        // TODO: Implement
+        return accountAllowances[owner][spender];
     }
 
     /**
@@ -93,7 +103,25 @@ contract RUToken is IERC20, IERC20Metadata {
      * Emits an {Approval} event.
      */
     function approve(address spender, uint256 amount) external override returns (bool) {
-        // TODO: Implement
+        address caller = msg.sender;
+        bool succeeded = true;
+        //@TODO do we need to confirm that the caller even has `amount` tokens?
+
+
+        // as suggested, we first reduce `spender`'s allowance to 0...
+        succeeded = setAllowance(caller, spender, 0);
+        if (!succeeded) {
+            return false;
+        }
+
+        // ... and only *now* set the spender's allowance to `amount` of the caller's tokens
+        succeeded = setAllowance(caller, spender, amount);
+        if (!succeeded) {
+            return false;
+        }
+
+        emit Approval(caller, spender, amount);
+        return true;
     }
 
     /**
@@ -106,22 +134,101 @@ contract RUToken is IERC20, IERC20Metadata {
      * Emits a {Transfer} event.
      */
     function transferFrom(address sender, address recipient, uint256 amount) external override returns (bool) {
-        // TODO: Implement
+        // caller=spender uses sender's=owner's money
+        address spender = msg.sender;
+
+        uint256 currentSpenderAllowance = allowance(sender, spender);
+        bool allowanceUsageSucceeded = spendAllowance(sender, spender, amount);
+        if (!allowanceUsageSucceeded) {
+            return false;
+        }
+
+        bool approvalSucceeded = approve(sender, amount);
+        if (!approvalSucceeded) {
+            return false;
+        }
+
+        emit Transfer(owner, recipient, amount);
+        return (allowanceUsageSucceeded && approvalSucceeded);
     }
 
     /**
      * @dev Mint a new token. 
      * The total number of tokens minted is the msg value divided by tokenPrice.
      */
-    function mint() public payable returns (uint) {
-        // TODO: Implement
+    function mint() public payable returns (uint) {    
+        uint numTokens = msg.value / tokenPrice;
+        totalSupply += numTokens;
+        return numTokens;
     }
 
     /**
      * Burn `amount` tokens. The corresponding value (`tokenPrice` for each token) is sent to the caller.
      */
     function burn(uint amount) public {
-        // TODO: Implement
+        address caller = msg.sender;
+        
+        // requires?
+
+        totalSupply -= amount;
+
+
+        uint256 value = amount * tokenPrice;
+
+        // @TODO do we also store eth amounts fo each person then? Doesn't make sense
+
     }
+
+
+    /**
+    Helper function to transfer `amount` tokens from `from` to `to`
+     */
+    function transferHelper(address from, address to, uint256 amount) internal returns (bool) {
+        //require(from != address(0), "ERC20: transfer from the zero address");
+        //require(to != address(0), "ERC20: transfer to the zero address");
+        if (from == address(0) || to == address(0)) {
+            return false;
+        }
+
+        uint256 fromBalance = _balances[from];
+        //require(fromBalance >= amount, "ERC20: transfer amount exceeds balance");
+        if (fromBalance < amount) {
+            return false;
+        }
+        
+        unchecked {
+            accountBalances[from] = fromBalance - amount;
+            accountBalances[to] += amount;
+        }
+
+        return true;
+    }
+    
+    /**
+    Helper function which allows spender to use `amount` of owner's tokens
+     */
+    function setAllowance(address owner, address spender, uint256 amount) returns (bool) {
+        if (from == address(0) || to == address(0)) {
+            return false;
+        }
+
+        accountAllowances[owner][spender] = amount;
+        return true;
+    }
+
+    /**
+    Helper function which uses a `amount` of the spender's allowance to use owner's tokens
+     */
+    function spendAllowance(address owner, address spender, uint256 amount) returns (bool) {
+        uint256 currentSpenderAllowance = allowance(owner, spender);
+        if (currentSpenderAllowance < amount) {
+            return false;
+        }
+
+        setAllowance(owner, spender, currentSpenderAllowance - amount);
+
+        return true;
+    }
+
 
 }
