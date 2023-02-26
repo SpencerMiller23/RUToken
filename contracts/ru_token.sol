@@ -19,10 +19,10 @@ contract RUToken is IERC20, IERC20Metadata {
      */
     uint public tokenPrice;
 
-    uint private totalSupply = 0;
+    uint private totalSupplys = 0;
 
     mapping(address => uint256) private accountBalances;
-    mapping(address => mapping(address, uint256)) private accountAllowances;
+    mapping(address => mapping(address => uint256)) private accountAllowances;
 
     constructor(uint _tokenPrice, uint _maxTokens) {
         tokenPrice = _tokenPrice;
@@ -49,7 +49,7 @@ contract RUToken is IERC20, IERC20Metadata {
      * @dev Returns the amount of tokens in existence.
      */
     function totalSupply() external view returns (uint256) {
-        return totalSupply;
+        return totalSupplys;
     }
 
     /**
@@ -72,7 +72,7 @@ contract RUToken is IERC20, IERC20Metadata {
         bool succeeded = transferHelper(caller, recipient, amount);
 
         if (succeeded) {
-            emit Transfer(from, to, amount);
+            emit Transfer(caller, recipient, amount);
         }
         return succeeded;
     }
@@ -148,7 +148,7 @@ contract RUToken is IERC20, IERC20Metadata {
             return false;
         }
 
-        emit Transfer(owner, recipient, amount);
+        emit Transfer(spender, recipient, amount);
         return (allowanceUsageSucceeded && approvalSucceeded);
     }
 
@@ -158,7 +158,7 @@ contract RUToken is IERC20, IERC20Metadata {
      */
     function mint() public payable returns (uint) {    
         uint numTokens = msg.value / tokenPrice;
-        totalSupply += numTokens;
+        totalSupplys += numTokens;
         return numTokens;
     }
 
@@ -170,7 +170,7 @@ contract RUToken is IERC20, IERC20Metadata {
         
         // requires?
 
-        totalSupply -= amount;
+        totalSupplys -= amount;
 
 
         uint256 value = amount * tokenPrice;
@@ -190,7 +190,7 @@ contract RUToken is IERC20, IERC20Metadata {
             return false;
         }
 
-        uint256 fromBalance = _balances[from];
+        uint256 fromBalance = accountBalances[from];
         //require(fromBalance >= amount, "ERC20: transfer amount exceeds balance");
         if (fromBalance < amount) {
             return false;
@@ -207,8 +207,8 @@ contract RUToken is IERC20, IERC20Metadata {
     /**
     Helper function which allows spender to use `amount` of owner's tokens
      */
-    function setAllowance(address owner, address spender, uint256 amount) returns (bool) {
-        if (from == address(0) || to == address(0)) {
+    function setAllowance(address owner, address spender, uint256 amount) private returns (bool) {
+        if (owner == address(0) || spender == address(0)) {
             return false;
         }
 
@@ -219,7 +219,7 @@ contract RUToken is IERC20, IERC20Metadata {
     /**
     Helper function which uses a `amount` of the spender's allowance to use owner's tokens
      */
-    function spendAllowance(address owner, address spender, uint256 amount) returns (bool) {
+    function spendAllowance(address owner, address spender, uint256 amount) private returns (bool) {
         uint256 currentSpenderAllowance = allowance(owner, spender);
         if (currentSpenderAllowance < amount) {
             return false;
