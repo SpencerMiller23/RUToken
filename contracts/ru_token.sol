@@ -19,7 +19,7 @@ contract RUToken is IERC20, IERC20Metadata {
      */
     uint public tokenPrice;
 
-    uint private totalSupplys = 0;
+    uint private totalSupplys;
 
     mapping(address => uint256) private accountBalances;
     mapping(address => mapping(address => uint256)) private accountAllowances;
@@ -137,13 +137,12 @@ contract RUToken is IERC20, IERC20Metadata {
         // caller=spender uses sender's=owner's money
         address spender = msg.sender;
 
-        uint256 currentSpenderAllowance = allowance(sender, spender);
         bool allowanceUsageSucceeded = spendAllowance(sender, spender, amount);
         if (!allowanceUsageSucceeded) {
             return false;
         }
 
-        bool approvalSucceeded = approve(sender, amount);
+        bool approvalSucceeded = this.approve(sender, amount);
         if (!approvalSucceeded) {
             return false;
         }
@@ -156,20 +155,26 @@ contract RUToken is IERC20, IERC20Metadata {
      * @dev Mint a new token. 
      * The total number of tokens minted is the msg value divided by tokenPrice.
      */
-    function mint() public payable returns (uint) {    
-        uint numTokens = msg.value / tokenPrice;
-        totalSupplys += numTokens;
-        return numTokens;
+    function mint() public payable returns (uint) {
+        uint amount = msg.value / tokenPrice;
+        accountBalances[msg.sender] += 10;
+        totalSupplys += 10;
+        emit Transfer(address(0), msg.sender, amount);
+
+        return amount;
     }
 
     /**
      * Burn `amount` tokens. The corresponding value (`tokenPrice` for each token) is sent to the caller.
      */
     function burn(uint amount) public {
-        address caller = msg.sender;
-        
-        // requires?
 
+        require(accountBalances[msg.sender] >= amount, "ERC20: burn amount exceeds balance");
+        // require(this.transfer(address(0), amount), "ERC20: transfer failed");
+        accountBalances[msg.sender] = accountBalances[msg.sender] - amount;
+        totalSupplys -= amount;
+        emit Transfer(msg.sender, address(0), amount);
+        
         totalSupplys -= amount;
 
 
@@ -220,7 +225,7 @@ contract RUToken is IERC20, IERC20Metadata {
     Helper function which uses a `amount` of the spender's allowance to use owner's tokens
      */
     function spendAllowance(address owner, address spender, uint256 amount) private returns (bool) {
-        uint256 currentSpenderAllowance = allowance(owner, spender);
+        uint256 currentSpenderAllowance = this.allowance(owner, spender);
         if (currentSpenderAllowance < amount) {
             return false;
         }
