@@ -116,11 +116,7 @@ contract RUToken is IERC20, IERC20Metadata {
      * Emits an {Approval} event.
      */
     function approve(address spender, uint256 amount) external override returns (bool) {
-        if (_balances[msg.sender] < amount) {
-            return false;
-        }
-        // require(_balances[msg.sender] >= amount, "Insufficient funds");
-
+        
         // Update account allowance
         _allowances[msg.sender][spender] = 0;
         _allowances[msg.sender][spender] = amount;
@@ -141,14 +137,18 @@ contract RUToken is IERC20, IERC20Metadata {
      */
     function transferFrom(address sender, address recipient, uint256 amount) external override returns (bool) {
         // Check if recipient is allowed to spend at least 'amount' of senders tokens 
-        uint recipientAllowance = _allowances[sender][recipient];
-        require(recipientAllowance >= amount, "Insufficient funds");
-
+        uint recipientAllowance = _allowances[recipient][sender];
+        require(recipientAllowance >= amount, "*transferFrom()* Recipient allowance is less than amount");
+		
         // Update allowance
-        _allowances[sender][recipient] = 0;
-        _allowances[sender][recipient] = recipientAllowance - amount;
+        _allowances[recipient][sender] = 0;
+        _allowances[recipient][sender] = recipientAllowance - amount;
+		
+		
 
         // Update account balances
+		require(_balances[sender] <= amount, "Insufficient funds");
+		
         _balances[sender] -= amount;
         _balances[recipient] += amount;
 
@@ -165,7 +165,7 @@ contract RUToken is IERC20, IERC20Metadata {
         uint amount = msg.value / tokenPrice;
 
         // Check if the total supply of tokens won't exceed 'maxToken'
-        require(amount + _totalSupply <= maxTokens, "Total amount of tokens exceeds maximum allowed");
+        require(amount + _totalSupply <= maxTokens, "*mint()* Total amount of tokens exceeds maximum allowed");
 
         _totalSupply += amount;
         _balances[msg.sender] += amount;
@@ -179,7 +179,7 @@ contract RUToken is IERC20, IERC20Metadata {
      */
     function burn(uint amount) public {
         // Check if the total supply of tokens won't exceed 'maxToken'
-        require(_balances[msg.sender] <= amount, "Insufficient funds");
+        require(_balances[msg.sender] <= amount, "*burn()* Balance of sender is more than amount");
 
         uint currency = amount * tokenPrice;
 
