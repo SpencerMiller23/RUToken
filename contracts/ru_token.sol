@@ -15,14 +15,24 @@ contract RUToken is IERC20, IERC20Metadata {
     uint public maxTokens;
 
     /**
-     * Price required to mint a token in ETH
+     * Price required to mint a token in ETH.
      */
     uint public tokenPrice;
 
-    uint private totalSupplys;
+    /**
+     * Total supply of tokens.
+     */
+    uint private _totalSupply;
 
-    mapping(address => uint256) private accountBalances;
-    mapping(address => mapping(address => uint256)) private accountAllowances;
+    /**
+     * Keeping track of all account balances.
+     */
+    mapping(address => uint) private _balances;
+
+    /**
+     * Keeping track of all account allowances.
+     */
+    mapping(address => mapping(address => uint)) private _allowances;
 
     constructor(uint _tokenPrice, uint _maxTokens) {
         tokenPrice = _tokenPrice;
@@ -49,14 +59,14 @@ contract RUToken is IERC20, IERC20Metadata {
      * @dev Returns the amount of tokens in existence.
      */
     function totalSupply() external view returns (uint256) {
-        return totalSupplys;
+        return _totalSupply;
     }
 
     /**
      * @dev Returns the amount of tokens owned by `account`.
      */
     function balanceOf(address account) public view override returns (uint256) {
-        return accountBalances[account];
+        return _balances[account];
     }
 
 
@@ -68,13 +78,16 @@ contract RUToken is IERC20, IERC20Metadata {
      * Emits a {Transfer} event.
      */
     function transfer(address recipient, uint256 amount) external override returns (bool) {
-        address caller = msg.sender;
-        bool succeeded = transferHelper(caller, recipient, amount);
+        // Check if sender has at least 'amount' tokens 
+        require(_balances[msg.sender] >= amount, "Insufficient funds");
 
-        if (succeeded) {
-            emit Transfer(caller, recipient, amount);
-        }
-        return succeeded;
+        // Update account balances
+        _balances[msg.sender] -= amount;
+        _balances[recipient] += amount;
+
+        emit Transfer(msg.sender, recipient, amount);
+
+        return true;
     }
 
     /**
@@ -85,7 +98,7 @@ contract RUToken is IERC20, IERC20Metadata {
      * This value changes when {approve} or {transferFrom} are called.
      */
     function allowance(address owner, address spender) external view override returns (uint256) {
-        return accountAllowances[owner][spender];
+        return _allowances[owner][spender];
     }
 
     /**
@@ -103,24 +116,17 @@ contract RUToken is IERC20, IERC20Metadata {
      * Emits an {Approval} event.
      */
     function approve(address spender, uint256 amount) external override returns (bool) {
-        address caller = msg.sender;
-        bool succeeded = true;
-        //@TODO do we need to confirm that the caller even has `amount` tokens?
-
-
-        // as suggested, we first reduce `spender`'s allowance to 0...
-        succeeded = setAllowance(caller, spender, 0);
-        if (!succeeded) {
+        if (_balances[msg.sender] < amount) {
             return false;
         }
+        // require(_balances[msg.sender] >= amount, "Insufficient funds");
 
-        // ... and only *now* set the spender's allowance to `amount` of the caller's tokens
-        succeeded = setAllowance(caller, spender, amount);
-        if (!succeeded) {
-            return false;
-        }
+        // Update account allowance
+        _allowances[msg.sender][spender] = 0;
+        _allowances[msg.sender][spender] = amount;
 
-        emit Approval(caller, spender, amount);
+        emit Approval(msg.sender, spender, amount);
+
         return true;
     }
 
@@ -134,21 +140,21 @@ contract RUToken is IERC20, IERC20Metadata {
      * Emits a {Transfer} event.
      */
     function transferFrom(address sender, address recipient, uint256 amount) external override returns (bool) {
-        // caller=spender uses sender's=owner's money
-        address spender = msg.sender;
+        // Check if recipient is allowed to spend at least 'amount' of senders tokens 
+        uint recipientAllowance = _allowances[sender][recipient];
+        require(recipientAllowance >= amount, "Insufficient funds");
 
-        bool allowanceUsageSucceeded = spendAllowance(sender, spender, amount);
-        if (!allowanceUsageSucceeded) {
-            return false;
-        }
+        // Update allowance
+        _allowances[sender][recipient] = 0;
+        _allowances[sender][recipient] = recipientAllowance - amount;
 
-        bool approvalSucceeded = this.approve(sender, amount);
-        if (!approvalSucceeded) {
-            return false;
-        }
+        // Update account balances
+        _balances[sender] -= amount;
+        _balances[recipient] += amount;
 
-        emit Transfer(spender, recipient, amount);
-        return (allowanceUsageSucceeded && approvalSucceeded);
+        emit Transfer(sender, recipient, amount);
+
+        return true;
     }
 
     /**
@@ -157,83 +163,28 @@ contract RUToken is IERC20, IERC20Metadata {
      */
     function mint() public payable returns (uint) {
         uint amount = msg.value / tokenPrice;
-        accountBalances[msg.sender] += 10;
-        totalSupplys += 10;
-        emit Transfer(address(0), msg.sender, amount);
+
+        // Check if the total supply of tokens won't exceed 'maxToken'
+        require(amount + _totalSupply <= maxTokens, "Total amount of tokens exceeds maximum allowed");
+
+        _totalSupply += amount;
+        _balances[msg.sender] += amount;
 
         return amount;
+
     }
 
     /**
      * Burn `amount` tokens. The corresponding value (`tokenPrice` for each token) is sent to the caller.
      */
     function burn(uint amount) public {
+        // Check if the total supply of tokens won't exceed 'maxToken'
+        require(_balances[msg.sender] <= amount, "Insufficient funds");
 
-        require(accountBalances[msg.sender] >= amount, "ERC20: burn amount exceeds balance");
-        // require(this.transfer(address(0), amount), "ERC20: transfer failed");
-        accountBalances[msg.sender] = accountBalances[msg.sender] - amount;
-        totalSupplys -= amount;
-        emit Transfer(msg.sender, address(0), amount);
-        
-        totalSupplys -= amount;
+        uint currency = amount * tokenPrice;
 
+        _totalSupply -= amount;
 
-        uint256 value = amount * tokenPrice;
-
-        // @TODO do we also store eth amounts fo each person then? Doesn't make sense
-
+        payable(msg.sender).transfer(currency);
     }
-
-
-    /**
-    Helper function to transfer `amount` tokens from `from` to `to`
-     */
-    function transferHelper(address from, address to, uint256 amount) internal returns (bool) {
-        //require(from != address(0), "ERC20: transfer from the zero address");
-        //require(to != address(0), "ERC20: transfer to the zero address");
-        if (from == address(0) || to == address(0)) {
-            return false;
-        }
-
-        uint256 fromBalance = accountBalances[from];
-        //require(fromBalance >= amount, "ERC20: transfer amount exceeds balance");
-        if (fromBalance < amount) {
-            return false;
-        }
-        
-        unchecked {
-            accountBalances[from] = fromBalance - amount;
-            accountBalances[to] += amount;
-        }
-
-        return true;
-    }
-    
-    /**
-    Helper function which allows spender to use `amount` of owner's tokens
-     */
-    function setAllowance(address owner, address spender, uint256 amount) private returns (bool) {
-        if (owner == address(0) || spender == address(0)) {
-            return false;
-        }
-
-        accountAllowances[owner][spender] = amount;
-        return true;
-    }
-
-    /**
-    Helper function which uses a `amount` of the spender's allowance to use owner's tokens
-     */
-    function spendAllowance(address owner, address spender, uint256 amount) private returns (bool) {
-        uint256 currentSpenderAllowance = this.allowance(owner, spender);
-        if (currentSpenderAllowance < amount) {
-            return false;
-        }
-
-        setAllowance(owner, spender, currentSpenderAllowance - amount);
-
-        return true;
-    }
-
-
 }
