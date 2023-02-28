@@ -137,12 +137,12 @@ contract RUToken is IERC20, IERC20Metadata {
      */
     function transferFrom(address sender, address recipient, uint256 amount) external override returns (bool) {
         // Check if recipient is allowed to spend at least 'amount' of senders tokens 
-        uint recipientAllowance = _allowances[recipient][sender];
+        uint recipientAllowance = _allowances[sender][msg.sender];
         require(recipientAllowance >= amount, "*transferFrom()* Recipient allowance is less than amount");
 		
         // Update allowance
-        _allowances[recipient][sender] = 0;
-        _allowances[recipient][sender] = recipientAllowance - amount;
+        _allowances[sender][msg.sender] = 0;
+        _allowances[sender][msg.sender] = recipientAllowance - amount;
 		
 		
 
